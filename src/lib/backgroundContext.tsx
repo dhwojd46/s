@@ -86,7 +86,9 @@ function setCachedBackground(url: string): void {
 }
 
 function fetchNewBackground(): string {
-  return `https://loliapi.com/acg/?${Date.now()}`;
+  // 使用时间戳作为种子参数，确保URL唯一且可追踪
+  const timestamp = Date.now();
+  return `https://loliapi.com/acg/?seed=${timestamp}`;
 }
 
 // 预加载图片并验证
@@ -118,34 +120,38 @@ export function BackgroundProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initBackground = async () => {
-      // 第一优先级：检查全局变量（其他组件实例已加载过）
+      // 第一优先级：检查内存中的全局变量（同页面多组件实例共享）
       const globalUrl = getGlobalBackground();
       if (globalUrl) {
         setBackgroundUrl(globalUrl);
         return;
       }
 
-      // 第二优先级：检查 sessionStorage（同一会话）
+      // 第二优先级：检查 sessionStorage（会话级别锁定）
+      // 这是确保页面切换时背景一致的关键
       const sessionUrl = getSessionBackground();
       if (sessionUrl) {
+        // 找到会话URL，立即使用，不再生成新的
         setBackgroundUrl(sessionUrl);
         setGlobalBackground(sessionUrl);
         return;
       }
 
-      // 第三优先级：检查 localStorage 缓存
+      // 第三优先级：检查 localStorage 缓存（跨会话复用）
       let finalUrl = '';
       const cached = getCachedBackground();
       if (cached) {
+        // 预加载验证缓存的图片是否可用
         const isValid = await preloadImage(cached);
         if (isValid) {
           finalUrl = cached;
         } else {
+          // 缓存的图片失效，清除缓存
           localStorage.removeItem(BG_CACHE_KEY);
         }
       }
 
-      // 最后：获取新图片
+      // 第四优先级：仅在所有缓存失效时才生成新URL
       if (!finalUrl) {
         const newUrl = fetchNewBackground();
         const isValid = await preloadImage(newUrl);
@@ -155,11 +161,11 @@ export function BackgroundProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // 更新所有层级
+      // 将最终URL写入所有层级（关键：锁定到session）
       if (finalUrl) {
         setBackgroundUrl(finalUrl);
         setGlobalBackground(finalUrl);
-        setSessionBackground(finalUrl);
+        setSessionBackground(finalUrl); // 锁定本次会话使用这个URL
       }
     };
 

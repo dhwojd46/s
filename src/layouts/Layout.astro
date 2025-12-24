@@ -30,7 +30,7 @@ const { title = '脸书小助手' } = Astro.props;
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📱</text></svg>" />
     <title>{title}</title>
 
-    <!-- 全局背景初始化脚本 -->
+    <!-- 全局背景初始化脚本 - 确保会话内100%一致 -->
     <script is:inline>
       (function() {
         const BG_CACHE_KEY = 'app_background_cache';
@@ -39,28 +39,41 @@ const { title = '脸书小助手' } = Astro.props;
 
         function initGlobalBackground() {
           try {
+            // 第一优先级：检查 sessionStorage
+            // 如果已存在，说明是同一会话内的页面跳转，必须使用相同URL
             const sessionUrl = sessionStorage.getItem(BG_SESSION_KEY);
             if (sessionUrl) {
               return;
             }
 
+            // 第二优先级：检查 localStorage 缓存
             const cached = localStorage.getItem(BG_CACHE_KEY);
             if (cached) {
               try {
                 const data = JSON.parse(cached);
                 const now = Date.now();
                 if (now - data.timestamp <= BG_EXPIRE_TIME) {
+                  // 将缓存的URL写入session，锁定本次会话
                   sessionStorage.setItem(BG_SESSION_KEY, data.url);
                   return;
                 }
-              } catch (e) {}
+              } catch (e) {
+                localStorage.removeItem(BG_CACHE_KEY);
+              }
             }
 
-            const newUrl = `https://loliapi.com/acg/?${Date.now()}`;
+            // 第三优先级：生成新URL（仅在无任何缓存时）
+            // 使用当前时间戳作为唯一标识
+            const timestamp = Date.now();
+            const newUrl = `https://loliapi.com/acg/?seed=${timestamp}`;
+
+            // 立即锁定到 sessionStorage，确保后续页面使用相同URL
             sessionStorage.setItem(BG_SESSION_KEY, newUrl);
+
+            // 同时缓存到 localStorage 供下次会话使用
             const cacheData = {
               url: newUrl,
-              timestamp: Date.now()
+              timestamp: timestamp
             };
             localStorage.setItem(BG_CACHE_KEY, JSON.stringify(cacheData));
           } catch (error) {
